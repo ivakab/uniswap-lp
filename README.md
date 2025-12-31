@@ -1,5 +1,3 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
-
 ## Getting Started
 
 First, run the development server:
@@ -16,21 +14,166 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Goal
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The MVP shows **stable/stable pools** on **Uniswap v3** on the **Base** network and helps you quickly compare them by:
 
-## Learn More
+- liquidity size (TVL),
+- activity (24h Volume),
+- potential fee-based return (Fee APR).
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Data sources (The Graph / Uniswap v3 Subgraph)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 1) Pools list (entity: `Pool`)
 
-## Deploy on Vercel
+We query the pool list and use these fields:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `id` — pool address
+- `token0 { id, symbol }`, `token1 { id, symbol }` — pool tokens
+- `feeTier` — pool fee tier (e.g. `500` = 0.05%)
+- `totalValueLockedUSD` — current pool TVL in USD
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Filters:
+
+- `token0_in` and `token1_in` — both tokens must be in the stablecoin whitelist
+- `totalValueLockedUSD_gt = minTvl` — filter out small pools
+- sort by `totalValueLockedUSD` descending
+
+Why:
+
+- to get “candidates” — **large stable/stable pools** worth analyzing.
+
+---
+
+### 2) Pool daily data (entity: `PoolDayData`)
+
+For the selected pools we query daily data for the last `N` days and use:
+
+- `date` — day timestamp (rounded to the start of the day)
+- `pool { id }` — which pool the record belongs to
+- `volumeUSD` — trading volume for that day (24h)
+- `feesUSD` — fees collected that day (24h)
+- `tvlUSD` — TVL for that day
+
+Why:
+
+- without daily data you can’t correctly compute **24h Volume** and **Fee APR over a period**.
+
+---
+
+## Metric definitions
+
+### TVL (Total Value Locked)
+
+**What it is:** total value of assets in the pool (in USD).
+
+**Source:** `Pool.totalValueLockedUSD` (or the most recent `PoolDayData.tvlUSD`).
+
+**Why:**
+
+- to exclude small pools
+- a base value for yield calculations
+
+---
+
+### 24h Volume
+
+**What it is:** trading volume over the last 24 hours (in USD).
+
+**Source:** the most recent `PoolDayData.volumeUSD`.
+
+**How we compute it:** take the latest day record and use its `volumeUSD`.
+
+**Why:** reflects pool activity and indirectly affects fees.
+
+---
+
+### Fees over a period (e.g., 7 days)
+
+**What it is:** total fees collected by the pool over the period (in USD).
+
+**Source:** `PoolDayData.feesUSD`.
+
+**How we compute it:**
+
+```
+feesPeriod = Σ feesUSD(day_i)
+```
+
+**Why:** this is the pool’s fee earnings over the period.
+
+---
+
+### Average TVL over the period (avg TVL)
+
+**What it is:** the average pool TVL over the period.
+
+**Source:** `PoolDayData.tvlUSD`.
+
+**How we compute it:**
+
+```
+avgTvl = (Σ tvlUSD(day_i)) / N
+```
+
+**Why:** TVL changes over time; averaging makes the APR estimate more stable.
+
+---
+
+## Core calculation: Fee APR (annualized fee return)
+
+**What it is:** an estimate of the pool’s annualized return based on collected fees.
+
+**Based on:** `feesPeriod` and `avgTvl` over `N` days.
+
+Period return:
+
+```
+periodReturn = feesPeriod / avgTvl
+```
+
+Annualization:
+
+```
+feeApr = periodReturn * (365 / N)
+```
+
+Final formula:
+
+```
+feeApr = (feesPeriod / avgTvl) * (365 / N)
+```
+
+---
+
+## What the table shows and where it comes from
+
+- **Chain:** `base` (blockchain, constant for the MVP)
+- **Pair:** `token0.symbol / token1.symbol` (from `Pool`)
+- **Fee tier:** `feeTier` (from `Pool`)
+- **TVL:** `totalValueLockedUSD` (from `Pool`) or latest `tvlUSD` (from `PoolDayData`)
+- **Volume 24h:** latest `volumeUSD` (from `PoolDayData`)
+- **Fee APR (7d):** formula above based on `feesUSD` and `tvlUSD` over 7 days
+
+---
+
+## Limitations
+
+- This is the **pool-level APR**, not the return of a specific Uniswap v3 LP position.
+- Real LP returns depend on the **price range** of the position.
+- The MVP does not account for:
+
+  - impermanent loss,
+  - APY,
+  - token/bridge/smart-contract risks,
+  - position-specific returns (requires position modeling).
+
+---
+
+## MVP parameters (configurable)
+
+- `minTvl` — minimum TVL to include a pool
+- `N` — period used to compute fees and APR (default: 7 days)
+- `first` — number of pools fetched from the subgraph (e.g., top-50 by TVL)
