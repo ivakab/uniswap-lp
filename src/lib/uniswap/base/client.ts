@@ -30,6 +30,9 @@ export async function graphqlQuery<T>(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),
+    next: {
+      revalidate: 60,
+    },
   });
 
   if (!response.ok) {
