@@ -1,4 +1,4 @@
-import { BASE_STABLECOINS } from "@/lib/config/stablecoins";
+import { BASE_STABLECOINS } from "@/services/config/stablecoins";
 import { graphqlQuery } from "./client";
 import {
   STABLE_POOLS_QUERY,
