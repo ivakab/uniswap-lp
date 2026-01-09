@@ -3,7 +3,7 @@
 import { Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import { getChainFilters, type Pool } from "@/lib/types";
+import { getChainFilters, type Pool } from "@/services/types";
 import { formatPct, formatUsd } from "@/utils/formatters";
 
 const columns: ColumnsType<Pool> = [

@@ -6,7 +6,7 @@ import Link from "next/link";
 
 import { PageLayout } from "@/components/PageLayout";
 import { PoolsTable } from "@/components/PoolsTable";
-import { getPools } from "@/lib/pools";
+import { getPools } from "@/services/pools";
 
 export default async function PoolsPage() {
   const pools = await getPools();

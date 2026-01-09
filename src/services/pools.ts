@@ -3,7 +3,7 @@ import {
   fetchPoolDayDatas,
   fetchStablePools,
   groupByPool,
-} from "@/lib/uniswap/base";
+} from "@/services/uniswap/base";
 import type { Pool } from "./types";
 
 export async function getPools(): Promise<Pool[]> {

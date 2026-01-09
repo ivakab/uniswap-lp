@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPools } from "@/lib/pools";
+import { getPools } from "@/services/pools";
 
 export async function GET() {
   const pools = await getPools();
